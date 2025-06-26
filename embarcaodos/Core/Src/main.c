@@ -55,6 +55,9 @@ SemaphoreHandle_t bSemaphore;
 SemaphoreHandle_t lSemaphore;
 SemaphoreHandle_t sUART;
 SemaphoreHandle_t mUART;
+TaskHandle_t xuart_task = NULL;
+char sinal = 0;
+uint8_t *Sstring = (uint8_t *) "Sensor desligado!\n\r";
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -87,6 +90,14 @@ void button_task(void *args){
 		if(xSemaphoreTake(bSemaphore,portMAX_DELAY)==pdTRUE){
 			vTaskDelay(50);
 			xSemaphoreGive(lSemaphore);
+			if(sinal==1){
+				sinal=0;
+				Sstring = (uint8_t *) "Sensor desligado!\n\r";
+			}else{
+				sinal=1;
+				Sstring = (uint8_t *) "Sensor ligado!\n\r";
+				vTaskResume(xuart_task);
+			}
 			HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 		}
 	}
@@ -94,17 +105,22 @@ void button_task(void *args){
 
 void uart_task(void *argument){
 
-	uint8_t *string = (uint8_t *) "Ola Mundo da tarefa 1!\n\r";
-
 	while(1){
 
-		if(xSemaphoreTake(mUART,portMAX_DELAY)== pdTRUE){
-
-			HAL_UART_Transmit_IT(&hlpuart1, string, 25);
-
-			xSemaphoreTake(sUART, portMAX_DELAY);
+		if(sinal==0){
+			if(xSemaphoreTake(mUART,portMAX_DELAY)== pdTRUE){
+				HAL_UART_Transmit_IT(&hlpuart1, Sstring, 19);
+				xSemaphoreTake(sUART, portMAX_DELAY);
+				xSemaphoreGive(mUART);
+				vTaskSuspend(xuart_task);
+			}
+		}else{
+			if(xSemaphoreTake(mUART,portMAX_DELAY)== pdTRUE){
+				HAL_UART_Transmit_IT(&hlpuart1, Sstring, 16);
+				xSemaphoreTake(sUART, portMAX_DELAY);
+				xSemaphoreGive(mUART);
+			}
 		}
-		xSemaphoreGive(mUART);
 	}
 }
 
@@ -185,7 +201,7 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
 	(void)xTaskCreate(led_task, "led_task", 128, &led, 2, NULL);
-	(void)xTaskCreate(uart_task, "uart_task", 128, NULL, 1, NULL);
+	(void)xTaskCreate(uart_task, "uart_task", 128, NULL, 1, &xuart_task);
 	(void)xTaskCreate(button_task, "button_task", 128, NULL, 3, NULL);
   /* USER CODE END RTOS_THREADS */
 
